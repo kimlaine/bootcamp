@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <numeric>
+#include <algorithm>
 
 using namespace std;
 using namespace seal;
@@ -18,7 +19,12 @@ void bootcamp_demo()
     // CLIENT'S VIEW
 
     // Vector of inputs
-    vector<double> inputs{ 3.3, 4.4, 5.5, 6.6, 7.7, 8.8 };
+    size_t dimension = 1000;
+    vector<double> inputs;
+    inputs.reserve(dimension);
+    for (size_t i = 0; i < dimension; i++) {
+        inputs.push_back(i + 0.001 * i);
+    };
     
     // Setting up encryption parameters
     EncryptionParameters parms(scheme_type::CKKS);
@@ -41,15 +47,8 @@ void bootcamp_demo()
 
     // Create a vector of plaintexts
     CKKSEncoder encoder(context);
-    vector<Plaintext> pts;
-    for (auto val : inputs) {
-        Plaintext p;
-
-        // Encode val as a plaintext vector: [ val, val, val, val, ..., val ]
-        // (poly_modulus_degree/2 == 4096 repetitions)
-        encoder.encode(val, scale, p);
-        pts.emplace_back(move(p));
-    }
+    Plaintext pt;
+    encoder.encode(inputs, scale, pt);
 
     // Set up keys
     KeyGenerator keygen(context);
@@ -60,12 +59,12 @@ void bootcamp_demo()
     Encryptor encryptor(context, pk);
 
     // Create a vector of ciphertexts
-    vector<Ciphertext> cts;
-    for (const auto &p : pts) {
-        Ciphertext c;
-        encryptor.encrypt(p, c);
-        cts.emplace_back(move(c));
-    }
+    Ciphertext ct;
+    encryptor.encrypt(pt, ct);
+
+    // Save one of them to see size
+    ofstream fs("test.ct", ios::binary);
+    ct.save(fs);
 
     // Now send this vector to the server!
     // Also send the EncryptionParameters.
@@ -76,26 +75,18 @@ void bootcamp_demo()
 
     // Load EncryptionParameters and set up SEALContext
 
-    vector<double> weights{ 1.0, 2.0, -1.0, -2.0, 1.0, 2.0 };
-    vector<Plaintext> weight_pts;
-    for (auto wt : weights) {
-        Plaintext p;
-
-        // Encode wt as a plaintext vector: [ wt, wt, wt, wt, ..., wt ]
-        // (poly_modulus_degree/2 == 4096 repetitions)
-        encoder.encode(wt, scale, p);
-        weight_pts.emplace_back(p);
+    vector<double> weights;
+    weights.reserve(dimension);
+    for (size_t i = 0; i < dimension; i++) {
+        weights.push_back((dimension & 1) ? -1.0 : 2.0);
     }
+
+    Plaintext weight_pt;
+    encoder.encode(weights, scale, weight_pt);
 
     // Create the Evaluator
     Evaluator evaluator(context);
-    for (auto i = 0; i < cts.size(); i++) {
-        evaluator.multiply_plain_inplace(cts[i], weight_pts[i]);
-    }
-
-    // Sum up the ciphertexts
-    Ciphertext ct_result;
-    evaluator.add_many(cts, ct_result);
+    evaluator.multiply_plain_inplace(ct, weight_pt);
 
     
     // CLIENT'S VIEW ONCE AGAIN
@@ -104,12 +95,12 @@ void bootcamp_demo()
 
     // Decrypt the result
     Plaintext pt_result;
-    decryptor.decrypt(ct_result, pt_result);
+    decryptor.decrypt(ct, pt_result);
 
     // Decode the result
     vector<double> vec_result;
     encoder.decode(pt_result, vec_result);
-    cout << "Result: " << vec_result[0] << endl;
+    cout << "Result: " << accumulate(vec_result.cbegin(), vec_result.cend(), 0.0) << endl;
     cout << "True result: " << inner_product(inputs.cbegin(), inputs.cend(), weights.cbegin(), 0.0) << endl;
 }
 
