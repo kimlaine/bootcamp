@@ -18,25 +18,37 @@ void bootcamp_demo()
     // CLIENT'S VIEW
 
     // Vector of inputs
-    vector<int64_t> inputs{ 3, 4, 5, 6, 7, 8 };
+    vector<double> inputs{ 3.3, 4.4, 5.5, 6.6, 7.7, 8.8 };
     
     // Setting up encryption parameters
-    EncryptionParameters parms(scheme_type::BFV);
+    EncryptionParameters parms(scheme_type::CKKS);
     size_t poly_modulus_degree = 8192;
     parms.set_poly_modulus_degree(poly_modulus_degree);
-    parms.set_coeff_modulus(CoeffModulus::BFVDefault(poly_modulus_degree));
-
-    // All computations happen modulo 2^20!
-    parms.set_plain_modulus(1ULL << 20);
+    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 50, 30, 50 }));
 
     // Set up the SEALContext
     auto context = SEALContext::Create(parms);
 
+    cout << "Parameters are valid: " << boolalpha
+        << context->key_context_data()->qualifiers().parameters_set << endl;
+    cout << "Maximal allowed coeff_modulus bit-count for this poly_modulus_degree: "
+        << CoeffModulus::MaxBitCount(poly_modulus_degree) << endl;
+    cout << "Current coeff_modulus bit-count: "
+        << context->key_context_data()->total_coeff_modulus_bit_count() << endl;
+    
+    // Use a scale of 2^30 to encode
+    double scale = pow(2.0, 30);
+
     // Create a vector of plaintexts
+    CKKSEncoder encoder(context);
     vector<Plaintext> pts;
-    IntegerEncoder int_encoder(context);
     for (auto val : inputs) {
-        pts.emplace_back(int_encoder.encode(val));
+        Plaintext p;
+
+        // Encode val as a plaintext vector: [ val, val, val, val, ..., val ]
+        // (poly_modulus_degree/2 == 4096 repetitions)
+        encoder.encode(val, scale, p);
+        pts.emplace_back(move(p));
     }
 
     // Set up keys
@@ -49,10 +61,10 @@ void bootcamp_demo()
 
     // Create a vector of ciphertexts
     vector<Ciphertext> cts;
-    for (const auto& p : pts) {
-        Ciphertext new_ct;
-        encryptor.encrypt(p, new_ct);
-        cts.emplace_back(move(new_ct));
+    for (const auto &p : pts) {
+        Ciphertext c;
+        encryptor.encrypt(p, c);
+        cts.emplace_back(move(c));
     }
 
     // Now send this vector to the server!
@@ -64,10 +76,15 @@ void bootcamp_demo()
 
     // Load EncryptionParameters and set up SEALContext
 
-    vector<int64_t> weights{ 1, 2, -1, -2, 1, 2 };
+    vector<double> weights{ 1.0, 2.0, -1.0, -2.0, 1.0, 2.0 };
     vector<Plaintext> weight_pts;
-    for (auto w : weights) {
-        weight_pts.emplace_back(int_encoder.encode(w));
+    for (auto wt : weights) {
+        Plaintext p;
+
+        // Encode wt as a plaintext vector: [ wt, wt, wt, wt, ..., wt ]
+        // (poly_modulus_degree/2 == 4096 repetitions)
+        encoder.encode(wt, scale, p);
+        weight_pts.emplace_back(p);
     }
 
     // Create the Evaluator
@@ -90,8 +107,10 @@ void bootcamp_demo()
     decryptor.decrypt(ct_result, pt_result);
 
     // Decode the result
-    cout << "Result: " << int_encoder.decode_int64(pt_result) << endl;
-    cout << "True result: " << inner_product(inputs.cbegin(), inputs.cend(), weights.cbegin(), 0) << endl;
+    vector<double> vec_result;
+    encoder.decode(pt_result, vec_result);
+    cout << "Result: " << vec_result[0] << endl;
+    cout << "True result: " << inner_product(inputs.cbegin(), inputs.cend(), weights.cbegin(), 0.0) << endl;
 }
 
 
@@ -99,11 +118,12 @@ void bootcamp_demo()
 
 int main()
 {
-    bootcamp_demo();
-
 #ifdef SEAL_VERSION
     cout << "Microsoft SEAL version: " << SEAL_VERSION << endl;
 #endif
+
+    bootcamp_demo();
+
     while (false)
     {
         cout << "+---------------------------------------------------------+" << endl;
