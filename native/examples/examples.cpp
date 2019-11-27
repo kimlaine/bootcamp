@@ -2,16 +2,109 @@
 // Licensed under the MIT license.
 
 #include "examples.h"
+#include <vector>
+#include <fstream>
+#include <iostream>
+#include <numeric>
 
 using namespace std;
 using namespace seal;
 
+
+
+
+void bootcamp_demo()
+{
+    // CLIENT'S VIEW
+
+    // Vector of inputs
+    vector<int64_t> inputs{ 3, 4, 5, 6, 7, 8 };
+    
+    // Setting up encryption parameters
+    EncryptionParameters parms(scheme_type::BFV);
+    size_t poly_modulus_degree = 8192;
+    parms.set_poly_modulus_degree(poly_modulus_degree);
+    parms.set_coeff_modulus(CoeffModulus::BFVDefault(poly_modulus_degree));
+
+    // All computations happen modulo 2^20!
+    parms.set_plain_modulus(1ULL << 20);
+
+    // Set up the SEALContext
+    auto context = SEALContext::Create(parms);
+
+    // Create a vector of plaintexts
+    vector<Plaintext> pts;
+    IntegerEncoder int_encoder(context);
+    for (auto val : inputs) {
+        pts.emplace_back(int_encoder.encode(val));
+    }
+
+    // Set up keys
+    KeyGenerator keygen(context);
+    auto sk = keygen.secret_key();
+    auto pk = keygen.public_key();
+
+    // Set up Encryptor
+    Encryptor encryptor(context, pk);
+
+    // Create a vector of ciphertexts
+    vector<Ciphertext> cts;
+    for (const auto& p : pts) {
+        Ciphertext new_ct;
+        encryptor.encrypt(p, new_ct);
+        cts.emplace_back(move(new_ct));
+    }
+
+    // Now send this vector to the server!
+    // Also send the EncryptionParameters.
+    // I'll show later how to do this.
+
+
+    // SERVER'S VIEW
+
+    // Load EncryptionParameters and set up SEALContext
+
+    vector<int64_t> weights{ 1, 2, -1, -2, 1, 2 };
+    vector<Plaintext> weight_pts;
+    for (auto w : weights) {
+        weight_pts.emplace_back(int_encoder.encode(w));
+    }
+
+    // Create the Evaluator
+    Evaluator evaluator(context);
+    for (auto i = 0; i < cts.size(); i++) {
+        evaluator.multiply_plain_inplace(cts[i], weight_pts[i]);
+    }
+
+    // Sum up the ciphertexts
+    Ciphertext ct_result;
+    evaluator.add_many(cts, ct_result);
+
+    
+    // CLIENT'S VIEW ONCE AGAIN
+
+    Decryptor decryptor(context, sk);
+
+    // Decrypt the result
+    Plaintext pt_result;
+    decryptor.decrypt(ct_result, pt_result);
+
+    // Decode the result
+    cout << "Result: " << int_encoder.decode_int64(pt_result) << endl;
+    cout << "True result: " << inner_product(inputs.cbegin(), inputs.cend(), weights.cbegin(), 0) << endl;
+}
+
+
+
+
 int main()
 {
+    bootcamp_demo();
+
 #ifdef SEAL_VERSION
     cout << "Microsoft SEAL version: " << SEAL_VERSION << endl;
 #endif
-    while (true)
+    while (false)
     {
         cout << "+---------------------------------------------------------+" << endl;
         cout << "| The following examples should be executed while reading |" << endl;
