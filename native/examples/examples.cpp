@@ -18,7 +18,7 @@ void bootcamp_demo()
     // CLIENT'S VIEW
 
     // Vector of inputs
-    vector<double> inputs{ 3.3, 4.4, 5.5, 6.6, 7.7, 8.8 };
+    vector<double> inputs{ 0.0, 1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9 };
     
     // Setting up encryption parameters
     EncryptionParameters parms(scheme_type::CKKS);
@@ -76,7 +76,7 @@ void bootcamp_demo()
 
     // Load EncryptionParameters and set up SEALContext
 
-    vector<double> weights{ 1.0, 2.0, -1.0, -2.0, 1.0, 2.0 };
+    vector<double> weights{ 2.0, -1.0, 2.0, -1.0, 2.0, -1.0, 2.0, -1.0, 2.0, -1.0 };
     vector<Plaintext> weight_pts;
     for (auto wt : weights) {
         Plaintext p;
