@@ -30,7 +30,7 @@ void bootcamp_demo()
     EncryptionParameters parms(scheme_type::CKKS);
     size_t poly_modulus_degree = 8192;
     parms.set_poly_modulus_degree(poly_modulus_degree);
-    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 50, 30, 50 }));
+    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 60, 30, 60 }));
 
     // Set up the SEALContext
     auto context = SEALContext::Create(parms);
@@ -55,14 +55,17 @@ void bootcamp_demo()
     auto sk = keygen.secret_key();
     auto pk = keygen.public_key();
 
+    // Create rotation (Galois) keys
+    auto galk = keygen.galois_keys();
+
     // Set up Encryptor
     Encryptor encryptor(context, pk);
 
-    // Create a vector of ciphertexts
+    // Create ciphertext
     Ciphertext ct;
     encryptor.encrypt(pt, ct);
 
-    // Save one of them to see size
+    // Save to see size
     ofstream fs("test.ct", ios::binary);
     ct.save(fs);
 
@@ -86,7 +89,16 @@ void bootcamp_demo()
 
     // Create the Evaluator
     Evaluator evaluator(context);
+
     evaluator.multiply_plain_inplace(ct, weight_pt);
+    evaluator.rescale_to_next_inplace(ct);
+
+    // Sum the slots
+    for (size_t i = 1; i <= encoder.slot_count() / 2; i <<= 1) {
+        Ciphertext temp_ct;
+        evaluator.rotate_vector(ct, i, galk, temp_ct);
+        evaluator.add_inplace(ct, temp_ct);
+    }
 
     
     // CLIENT'S VIEW ONCE AGAIN
@@ -100,7 +112,7 @@ void bootcamp_demo()
     // Decode the result
     vector<double> vec_result;
     encoder.decode(pt_result, vec_result);
-    cout << "Result: " << accumulate(vec_result.cbegin(), vec_result.cend(), 0.0) << endl;
+    cout << "Result: " << vec_result[0] << endl;
     cout << "True result: " << inner_product(inputs.cbegin(), inputs.cend(), weights.cbegin(), 0.0) << endl;
 }
 
