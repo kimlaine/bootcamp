@@ -58,11 +58,11 @@ void bootcamp_demo()
     // Set up Encryptor
     Encryptor encryptor(context, pk);
 
-    // Create a vector of ciphertexts
+    // Create ciphertext
     Ciphertext ct;
     encryptor.encrypt(pt, ct);
 
-    // Save one of them to see size
+    // Save to see size
     ofstream fs("test.ct", ios::binary);
     ct.save(fs);
 
