@@ -66,8 +66,16 @@ void bootcamp_demo()
     encryptor.encrypt(pt, ct);
 
     // Save to see size
-    ofstream fs("test.ct", ios::binary);
-    ct.save(fs);
+    {
+        ofstream fs("test.ct", ios::binary);
+        ct.save(fs);
+    }
+
+    // Save GaloisKeys to see their size
+    {
+        ofstream fs("test.galk", ios::binary);
+        galk.save(fs);
+    }
 
     // Now send this vector to the server!
     // Also send the EncryptionParameters.
