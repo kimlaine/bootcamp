@@ -48,9 +48,9 @@ void bootcamp_demo()
 
     // Setting up encryption parameters
     EncryptionParameters parms(scheme_type::CKKS);
-    size_t poly_modulus_degree = 8192;
+    size_t poly_modulus_degree = 4096;
     parms.set_poly_modulus_degree(poly_modulus_degree);
-    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 60, 30, 60 }));
+    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 37, 37, 35 }));
 
     // Set up the SEALContext
     auto context = SEALContext::Create(parms);
@@ -62,8 +62,8 @@ void bootcamp_demo()
     cout << "Current coeff_modulus bit-count: "
         << context->key_context_data()->total_coeff_modulus_bit_count() << endl;
 
-    // Use a scale of 2^30 to encode
-    double scale = pow(2.0, 30);
+    // Use a scale of 2^20 to encode
+    double scale = pow(2.0, 20);
 
     // Create a vector of plaintexts
     CKKSEncoder encoder(context);
@@ -73,35 +73,23 @@ void bootcamp_demo()
     // Set up keys
     KeyGenerator keygen(context);
     auto sk = keygen.secret_key();
-    auto pk = keygen.public_key();
 
-    GaloisKeys galk;
     // Create rotation (Galois) keys
     {
-        Stopwatch sw("GaloisKeys creation time");
-        galk = keygen.galois_keys();
+        ofstream fs("test.galk", ios::binary);
+        Stopwatch sw("GaloisKeys creation/save time");
+        keygen.galois_keys_save(vector<int>{ 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024 }, fs);
     }
 
     // Set up Encryptor
-    Encryptor encryptor(context, pk);
+    Encryptor encryptor(context, sk);
 
     // Create ciphertext
-    Ciphertext ct;
-    {
-        Stopwatch sw("Encryption time");
-        encryptor.encrypt(pt, ct);
-    }
-
-    // Save to see size
     {
         ofstream fs("test.ct", ios::binary);
-        ct.save(fs);
-    }
 
-    // Save GaloisKeys to see their size
-    {
-        ofstream fs("test.galk", ios::binary);
-        galk.save(fs);
+        Stopwatch sw("Encryption time");
+        encryptor.encrypt_symmetric_save(pt, fs);
     }
 
     // Now send this vector to the server!
@@ -125,18 +113,29 @@ void bootcamp_demo()
         encoder.encode(weights, scale, weight_pt);
     }
 
+    // Load Ciphertext
+    Ciphertext ct;
+    {
+        ifstream fs("test.ct", ios::binary);
+        ct.load(context, fs);
+    }
+
     // Create the Evaluator
     Evaluator evaluator(context);
 
     {
-        Stopwatch sw("Multiply-plain and rescale time");
+        Stopwatch sw("Multiply-plain time");
         evaluator.multiply_plain_inplace(ct, weight_pt);
-        evaluator.rescale_to_next_inplace(ct);
     }
 
 
     // Sum the slots
     {
+        // Load the GaloisKeys
+        ifstream fs("test.galk", ios::binary);
+        GaloisKeys galk;
+        galk.load(context, fs);
+
         Stopwatch sw("Sum-the-slots time");
         for (size_t i = 1; i <= encoder.slot_count() / 2; i <<= 1) {
             Ciphertext temp_ct;
