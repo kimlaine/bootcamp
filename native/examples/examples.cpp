@@ -7,11 +7,31 @@
 #include <iostream>
 #include <numeric>
 #include <algorithm>
+#include <chrono>
 
 using namespace std;
 using namespace seal;
 
+class Stopwatch
+{
+public:
+    Stopwatch(string timer_name) :
+        name_(timer_name),
+        start_time_(chrono::high_resolution_clock::now())
+    {
+    }
 
+    ~Stopwatch()
+    {
+        auto end_time = chrono::high_resolution_clock::now();
+        auto duration = chrono::duration_cast<chrono::milliseconds>(end_time - start_time_);
+        cout << name_ << ": " << duration.count() << " milliseconds" << endl;
+    }
+
+private:
+    string name_;
+    chrono::steady_clock::time_point start_time_;
+};
 
 
 void bootcamp_demo()
@@ -25,7 +45,7 @@ void bootcamp_demo()
     for (size_t i = 0; i < dimension; i++) {
         inputs.push_back(i + 0.001 * i);
     };
-    
+
     // Setting up encryption parameters
     EncryptionParameters parms(scheme_type::CKKS);
     size_t poly_modulus_degree = 8192;
@@ -41,7 +61,7 @@ void bootcamp_demo()
         << CoeffModulus::MaxBitCount(poly_modulus_degree) << endl;
     cout << "Current coeff_modulus bit-count: "
         << context->key_context_data()->total_coeff_modulus_bit_count() << endl;
-    
+
     // Use a scale of 2^30 to encode
     double scale = pow(2.0, 30);
 
@@ -55,15 +75,22 @@ void bootcamp_demo()
     auto sk = keygen.secret_key();
     auto pk = keygen.public_key();
 
+    GaloisKeys galk;
     // Create rotation (Galois) keys
-    auto galk = keygen.galois_keys();
+    {
+        Stopwatch sw("GaloisKeys creation time");
+        galk = keygen.galois_keys();
+    }
 
     // Set up Encryptor
     Encryptor encryptor(context, pk);
 
     // Create ciphertext
     Ciphertext ct;
-    encryptor.encrypt(pt, ct);
+    {
+        Stopwatch sw("Encryption time");
+        encryptor.encrypt(pt, ct);
+    }
 
     // Save to see size
     {
@@ -93,29 +120,43 @@ void bootcamp_demo()
     }
 
     Plaintext weight_pt;
-    encoder.encode(weights, scale, weight_pt);
+    {
+        Stopwatch sw("Encoding time");
+        encoder.encode(weights, scale, weight_pt);
+    }
 
     // Create the Evaluator
     Evaluator evaluator(context);
 
-    evaluator.multiply_plain_inplace(ct, weight_pt);
-    evaluator.rescale_to_next_inplace(ct);
-
-    // Sum the slots
-    for (size_t i = 1; i <= encoder.slot_count() / 2; i <<= 1) {
-        Ciphertext temp_ct;
-        evaluator.rotate_vector(ct, i, galk, temp_ct);
-        evaluator.add_inplace(ct, temp_ct);
+    {
+        Stopwatch sw("Multiply-plain and rescale time");
+        evaluator.multiply_plain_inplace(ct, weight_pt);
+        evaluator.rescale_to_next_inplace(ct);
     }
 
-    
+
+    // Sum the slots
+    {
+        Stopwatch sw("Sum-the-slots time");
+        for (size_t i = 1; i <= encoder.slot_count() / 2; i <<= 1) {
+            Ciphertext temp_ct;
+            evaluator.rotate_vector(ct, i, galk, temp_ct);
+            evaluator.add_inplace(ct, temp_ct);
+        }
+    }
+
+
+
     // CLIENT'S VIEW ONCE AGAIN
 
     Decryptor decryptor(context, sk);
 
     // Decrypt the result
     Plaintext pt_result;
-    decryptor.decrypt(ct, pt_result);
+    {
+        Stopwatch sw("Decryption time");
+        decryptor.decrypt(ct, pt_result);
+    }
 
     // Decode the result
     vector<double> vec_result;
