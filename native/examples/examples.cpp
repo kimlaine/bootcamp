@@ -86,7 +86,10 @@ void bootcamp_demo()
 
     // Create the Evaluator
     Evaluator evaluator(context);
+
+    // Multiply and rescale
     evaluator.multiply_plain_inplace(ct, weight_pt);
+    evaluator.rescale_to_next_inplace(ct);
 
     
     // CLIENT'S VIEW ONCE AGAIN
