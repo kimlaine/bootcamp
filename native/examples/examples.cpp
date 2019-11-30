@@ -91,6 +91,7 @@ void bootcamp_demo()
     Evaluator evaluator(context);
     for (auto i = 0; i < cts.size(); i++) {
         evaluator.multiply_plain_inplace(cts[i], weight_pts[i]);
+        evaluator.rescale_to_next_inplace(cts[i]);
     }
 
     // Sum up the ciphertexts
