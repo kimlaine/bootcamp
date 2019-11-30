@@ -94,7 +94,6 @@ void bootcamp_demo()
 
     // Now send this vector to the server!
     // Also send the EncryptionParameters.
-    // I'll show later how to do this.
 
 
     // SERVER'S VIEW
